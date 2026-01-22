@@ -1,19 +1,18 @@
 package com.example.kotlinweek1.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.kotlinweek1.domain.*
-import java.time.LocalDate
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun HomeScreen() {
-    var tasks by remember { mutableStateOf(TaskMock.tasks) }
-    var showOnlyDone by remember { mutableStateOf(false) }
-
-    val visibleTasks = if (showOnlyDone) filterByDone(tasks, true) else tasks
+fun HomeScreen(vm: TaskViewModel = viewModel()) {
+    var newTitle by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -24,42 +23,82 @@ fun HomeScreen() {
 
         Spacer(Modifier.height(12.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                modifier = Modifier.weight(1f),
+                value = newTitle,
+                onValueChange = { newTitle = it },
+                label = { Text("New task title") },
+                singleLine = true
+            )
+
             Button(onClick = {
-                val id = (tasks.maxOfOrNull { it.id } ?: 0) + 1
-                tasks = addTask(
-                    tasks,
-                    Task(
-                        id = id,
-                        title = "Uusi tehtävä #$id",
-                        description = "Lisätty napista",
-                        priority = 1,
-                        dueDate = LocalDate.now().plusDays(7),
-                        done = false
-                    )
-                )
+                val title = newTitle.trim()
+                if (title.isNotEmpty()) {
+                    vm.addTask(vm.createTaskFromTitle(title))
+                    newTitle = ""
+                }
             }) { Text("Add") }
-
-            Button(onClick = {
-                visibleTasks.firstOrNull()?.let { tasks = toggleDone(tasks, it.id) }
-            }) { Text("Toggle") }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showOnlyDone = !showOnlyDone }) {
-                Text(if (showOnlyDone) "Show all" else "Only done")
-            }
-            OutlinedButton(onClick = { tasks = sortByDueDate(tasks) }) {
-                Text("Sort")
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = { vm.showAll() }
+            ) { Text("Show all") }
+
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = { vm.filterByDone(true) }
+            ) { Text("Done") }
+
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = { vm.sortByDueDate() }
+            ) { Text("Sort") }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
-        visibleTasks.forEach {
-            Text("• ${it.title} (${if (it.done) "DONE" else "TODO"})")
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(items = vm.tasks, key = { it.id }) { task ->
+                Card {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = task.done,
+                            onCheckedChange = { vm.toggleDone(task.id) }
+                        )
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = task.title
+                        )
+
+                        TextButton(onClick = { vm.removeTask(task.id) }) {
+                            Text("Delete")
+                        }
+                    }
+                }
+            }
         }
     }
 }
