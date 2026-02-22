@@ -1,55 +1,71 @@
 package com.example.kotlinweek1.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.kotlinweek1.data.repository.TaskRepository
 import com.example.kotlinweek1.model.Task
-import com.example.kotlinweek1.model.TaskMock
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-class TaskViewModel : ViewModel() {
+class TaskViewModel(
+    private val repo: TaskRepository
+) : ViewModel() {
 
-    private val _tasks = MutableStateFlow<List<Task>>(emptyList())
-    val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
-
-    init {
-        _tasks.value = TaskMock.tasks
-    }
+    // UI kuuntelee tätä collectAsState():lla
+    val tasks: StateFlow<List<Task>> =
+        repo.observeTasks().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
     fun addTask(task: Task) {
-        _tasks.value = _tasks.value + task
+        viewModelScope.launch { repo.add(task) }
     }
 
-    fun toggleDone(id: Int) {
-        _tasks.value = _tasks.value.map {
-            if (it.id == id) it.copy(done = !it.done) else it
-        }
+    fun updateTask(task: Task) {
+        viewModelScope.launch { repo.update(task) }
     }
 
     fun removeTask(id: Int) {
-        _tasks.value = _tasks.value.filterNot { it.id == id }
+        viewModelScope.launch { repo.remove(id) }
     }
 
-    fun updateTask(updated: Task) {
-        _tasks.value = _tasks.value.map {
-            if (it.id == updated.id) updated else it
-        }
+    fun toggleDone(id: Int) {
+        val current = tasks.value.firstOrNull { it.id == id } ?: return
+        updateTask(current.copy(done = !current.done))
     }
 
     fun sortByDueDate() {
-        _tasks.value = _tasks.value.sortedBy { it.dueDate }
+        // Roomin query jo lajittelee dueDate ASC.
+        // Jos haluat eri järjestyksen, tee DAO:hon toinen query.
     }
 
     fun createTaskFromTitle(title: String): Task {
-        val nextId = (_tasks.value.maxOfOrNull { it.id } ?: 0) + 1
         return Task(
-            id = nextId,
-            title = title,
+            id = 0, // Room generoi id:n
+            title = title.trim(),
             description = "",
             priority = 1,
             dueDate = LocalDate.now().plusDays(7),
             done = false
         )
+    }
+}
+
+/** Factory, jotta ViewModel saa repositoryn */
+class TaskViewModelFactory(
+    private val repo: TaskRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(TaskViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return TaskViewModel(repo) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
